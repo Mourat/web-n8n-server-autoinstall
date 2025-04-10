@@ -4,6 +4,8 @@ set -e
 
 echo "Enter your main domain (e.g. tomated.app):"
 read DOMAIN
+DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]' | tr -d '
+')
 N8N_DOMAIN="n8n.$DOMAIN"
 
 if ! command -v docker &>/dev/null; then
