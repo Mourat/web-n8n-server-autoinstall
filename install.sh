@@ -93,6 +93,7 @@ services:
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/www:/var/www/certbot
       - wordpress_data:/var/www/html
     depends_on:
       - wordpress
