@@ -121,43 +121,24 @@ volumes:
 EOF
 
 echo "Generating nginx configuration files..."
-cat > nginx/conf.d/wordpress.conf <<EOF
+
+# Temporary config for Certbot HTTP challenge
+cat > nginx/conf.d/challenge-only.conf <<EOF
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name $DOMAIN $N8N_DOMAIN;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    server_name $DOMAIN;
-
-    ssl_certificate /etc/nginx/certs/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/live/$DOMAIN/privkey.pem;
-
-    root /var/www/html;
-    index index.php index.html;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$args;
-    }
-
-    location ~ \.php\$ {
-        include fastcgi_params;
-        fastcgi_pass php:9000;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        return 404;
     }
 }
 EOF
 
+# Full config will be added after successful cert generation
 cat > nginx/conf.d/n8n.conf <<EOF
 server {
     listen 80;
@@ -205,6 +186,10 @@ docker run --rm \
   --no-eff-email \
   --email admin@$DOMAIN \
   -d $DOMAIN -d $N8N_DOMAIN
+
+# Replace temporary config with full HTTPS-enabled config
+echo "Switching to full HTTPS nginx configuration..."
+rm -f nginx/conf.d/challenge-only.conf
 
 echo "Creating auto-renewal script ssl_renew.sh..."
 cat > ssl_renew.sh <<RENEW
