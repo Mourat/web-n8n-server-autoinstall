@@ -139,6 +139,65 @@ server {
 EOF
 
 # Full config will be added after successful cert generation
+
+echo "Starting nginx to obtain SSL certificates..."
+docker compose up -d nginx
+
+sleep 5
+
+echo "Requesting SSL certificates from Let's Encrypt..."
+docker run --rm \
+  -v $(pwd)/nginx/certs:/etc/letsencrypt \
+  -v $(pwd)/nginx/www:/var/www/certbot \
+  certbot/certbot certonly \
+  --webroot \
+  --webroot-path=/var/www/certbot \
+  --agree-tos \
+  --no-eff-email \
+  --email admin@$DOMAIN \
+  -d $DOMAIN -d $N8N_DOMAIN
+
+# Replace temporary config with full HTTPS-enabled config
+echo "Creating full nginx configuration files..."
+rm -f nginx/conf.d/challenge-only.conf
+
+cat > nginx/conf.d/wordpress.conf <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    ssl_certificate /etc/nginx/certs/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/live/$DOMAIN/privkey.pem;
+
+    root /var/www/html;
+    index index.php index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~ \.php\$ {
+        include fastcgi_params;
+        fastcgi_pass php:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
+}
+EOF
+
 cat > nginx/conf.d/n8n.conf <<EOF
 server {
     listen 80;
@@ -170,26 +229,7 @@ server {
 }
 EOF
 
-echo "Starting nginx to obtain SSL certificates..."
-docker compose up -d nginx
-
-sleep 5
-
-echo "Requesting SSL certificates from Let's Encrypt..."
-docker run --rm \
-  -v $(pwd)/nginx/certs:/etc/letsencrypt \
-  -v $(pwd)/nginx/www:/var/www/certbot \
-  certbot/certbot certonly \
-  --webroot \
-  --webroot-path=/var/www/certbot \
-  --agree-tos \
-  --no-eff-email \
-  --email admin@$DOMAIN \
-  -d $DOMAIN -d $N8N_DOMAIN
-
-# Replace temporary config with full HTTPS-enabled config
-echo "Switching to full HTTPS nginx configuration..."
-rm -f nginx/conf.d/challenge-only.conf
+docker compose restart nginx
 
 echo "Creating auto-renewal script ssl_renew.sh..."
 cat > ssl_renew.sh <<RENEW
