@@ -229,8 +229,44 @@ chmod +x ssl_renew.sh
 
 (crontab -l 2>/dev/null; echo "0 3 * * * $(pwd)/ssl_renew.sh >> /var/log/ssl_renew.log 2>&1") | crontab -
 
-echo "SSL certificates acquired. Restarting the full stack..."
-docker compose down && docker compose up -d
+echo "Creating postcheck.sh for verification..."
+cat > postcheck.sh <<POST
+#!/bin/bash
+
+set -e
+
+N8N_DOMAIN="n8n.$DOMAIN"
+
+echo "🔍 Checking running containers..."
+docker compose ps | grep "Exit" && echo "❌ Some containers have exited unexpectedly." || echo "✅ All containers are running."
+
+echo "🔍 Checking HTTP access..."
+if curl -s --head http://$DOMAIN | head -n 1 | grep -q "200\|301"; then
+  echo "✅ WordPress is reachable at http://$DOMAIN"
+else
+  echo "❌ WordPress is NOT reachable at http://$DOMAIN"
+fi
+
+if curl -s --head http://$N8N_DOMAIN | head -n 1 | grep -q "200\|301"; then
+  echo "✅ n8n is reachable at http://$N8N_DOMAIN"
+else
+  echo "❌ n8n is NOT reachable at http://$N8N_DOMAIN"
+fi
+
+echo "🔍 Checking SSL certificates..."
+echo | openssl s_client -connect $DOMAIN:443 -servername $DOMAIN 2>/dev/null | openssl x509 -noout -dates || echo "❌ SSL certificate check failed for $DOMAIN"
+echo | openssl s_client -connect $N8N_DOMAIN:443 -servername $N8N_DOMAIN 2>/dev/null | openssl x509 -noout -dates || echo "❌ SSL certificate check failed for $N8N_DOMAIN"
+
+echo "🔍 Checking MySQL connectivity..."
+docker exec mysql mysql -uwpuser -pwppassword -e "SHOW DATABASES;" 2>/dev/null | grep -q wordpress && \
+  echo "✅ MySQL is running and database 'wordpress' exists." || \
+  echo "❌ MySQL check failed. Unable to connect or database missing."
+
+echo "✅ Post-installation check complete."
+POST
+chmod +x postcheck.sh
+
+./postcheck.sh
 
 echo "Done! Your sites are available at:"
 echo "  - https://$DOMAIN"
