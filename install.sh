@@ -6,6 +6,12 @@ echo "Enter your main domain (e.g. tomated.app):"
 read DOMAIN
 DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]' | tr -d '
 ')
+
+# Check for non-ASCII characters
+if [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+  echo "❌ Error: Non-ASCII domain detected. Please enter the domain in Punycode."
+  exit 1
+fi
 N8N_DOMAIN="n8n.$DOMAIN"
 
 if ! command -v docker &>/dev/null; then
